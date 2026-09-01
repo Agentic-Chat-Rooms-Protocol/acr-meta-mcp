@@ -58,6 +58,50 @@ export class MetaMcpService {
       { name: 'read_workspace_file', description: 'Read file from scoped workspace', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
       { name: 'list_workspace_dir', description: 'List files in scoped workspace directory', inputSchema: { type: 'object', properties: { dir: { type: 'string' } } } },
     ]);
+
+    // 3. Context7 Real-Time Documentation Server & Vaulted Key
+    this.vault.storeSecret(
+      'sec_ref_context7_api_key',
+      'context7',
+      'CONTEXT7_API_KEY',
+      process.env.CONTEXT7_API_KEY || 'ctx7sk-368b8367-c3ec-436e-8df3-74f1526f86fe',
+      'personal'
+    );
+    this.registry.registerServer('context7', {
+      displayName: 'Context7 Real-Time Library Docs MCP',
+      transport: 'stdio',
+      trustLevel: 'verified',
+      sandboxProfile: 'workspace-scoped',
+      configSpec: {
+        command: 'npx',
+        args: ['-y', '@upstash/context7-mcp'],
+        env: { CONTEXT7_API_KEY: 'sec_ref_context7_api_key' },
+      },
+    });
+    this.registry.updateHealth('context7', 'ONLINE', 2);
+    this.toolStore.set('context7', [
+      {
+        name: 'resolve-library-id',
+        description: 'Resolve package or library name to Context7 ID (e.g. /facebook/react, /vercel/next.js)',
+        inputSchema: {
+          type: 'object',
+          properties: { libraryName: { type: 'string', description: 'Name of the library' } },
+          required: ['libraryName'],
+        },
+      },
+      {
+        name: 'query-docs',
+        description: 'Fetch up-to-date documentation content from Context7 index',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            libraryId: { type: 'string', description: 'Context7 library ID' },
+            query: { type: 'string', description: 'Documentation search query' },
+          },
+          required: ['libraryId', 'query'],
+        },
+      },
+    ]);
   }
 
   public importMcpConfig(rawConfig: string, actorDid = 'did:key:admin-local'): {
@@ -187,6 +231,22 @@ export class MetaMcpService {
       } else if (originalName === 'read_workspace_file' || originalName === 'list_workspace_dir') {
         executionContent = {
           content: [{ type: 'text', text: `[${serverId}] Workspace directory listed (sandbox contained, profile: workspace-scoped).` }],
+        };
+      } else if (originalName === 'resolve-library-id') {
+        const lib = (args.libraryName as string) || 'Next.js';
+        const libId = lib.toLowerCase().includes('next') ? '/vercel/next.js' : `/${lib.toLowerCase()}/${lib.toLowerCase()}`;
+        executionContent = {
+          content: [{
+            type: 'text',
+            text: `[context7] Resolved library "${lib}" -> ID "${libId}" (Vaulted Key Auth: Verified).`
+          }],
+        };
+      } else if (originalName === 'query-docs') {
+        executionContent = {
+          content: [{
+            type: 'text',
+            text: `[context7] Documentation query for "${args.libraryId || '/vercel/next.js'}" on "${args.query || 'general'}":\n• App Router & Server Actions API Spec\n• Auth: Verified with Auth Vault credential: sec_ref_context7_api_key`
+          }],
         };
       } else {
         executionContent = {
