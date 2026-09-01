@@ -1,0 +1,29 @@
+{
+  "name": "@acr-js/meta-mcp-monorepo",
+  "version": "0.8.2",
+  "private": true,
+  "description": "ACR Meta-MCP Forward Proxy: Policy-governed multi-server aggregation, sandboxing, and projection",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "test": "node --test dist/**/*.test.js || tsx --test packages/**/*.test.ts apps/**/*.test.ts",
+    "start": "node apps/control-plane-api/dist/index.js",
+    "dev": "tsx apps/control-plane-api/src/index.ts"
+  },
+  "keywords": [
+    "acr",
+    "mcp",
+    "meta-mcp",
+    "model-context-protocol",
+    "proxy",
+    "sandbox",
+    "policy"
+  ],
+  "author": "@acr-js",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3"
+  }
+}
