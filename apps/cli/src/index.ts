@@ -24,7 +24,7 @@ async function main() {
       console.log('======================================================');
       for (const s of data.servers || []) {
         const state = s.enabled ? (s.quarantined ? 'QUARANTINE' : s.healthStatus) : 'DISABLED';
-        console.log(` • [${state}] ${s.id.padEnd(20)} | ${s.transport.padEnd(16)} | ${s.displayName} (${s.toolCount} tools)`);
+        console.log(` • [${state.padEnd(10)}] ${s.id.padEnd(20)} | ${s.transport.padEnd(16)} | ${s.displayName} (${s.toolCount} tools)`);
       }
       console.log(`\nTotal: ${data.count} registered servers\n`);
       break;
@@ -95,6 +95,65 @@ async function main() {
       break;
     }
 
+    case 'vault': {
+      const subAction = args[1] || 'list';
+      if (subAction === 'list') {
+        const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vault/secrets`);
+        const data = (await res.json()) as any;
+        console.log('\n======================================================');
+        console.log(' ACR META-MCP AUTH VAULT SECRETS (ENCRYPTED DATABASE)');
+        console.log('======================================================');
+        for (const s of data.secrets || []) {
+          console.log(` • [${s.domain.padEnd(10)}] ${s.refId.padEnd(32)} | ${s.serverId.padEnd(16)} | Cipher: ${s.algorithm || 'aes-256-gcm'}`);
+        }
+        console.log(`\nTotal vaulted secrets: ${data.count}\n`);
+      } else if (subAction === 'set') {
+        const serverId = args[2];
+        const key = args[3];
+        const value = args[4];
+        if (!serverId || !key || !value) {
+          console.error('Usage: acr-meta-mcp vault set <serverId> <key> <value> [domain] [cipher]');
+          process.exit(1);
+        }
+        const domain = args[5] || 'personal';
+        const cipher = args[6] || 'aes-256-gcm';
+        const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vault/secrets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serverId, key, value, domain, cipher }),
+        });
+        const data = await res.json();
+        console.log('[ACR Meta-MCP Vault] Stored secret:', data);
+      } else if (subAction === 'delete') {
+        const refId = args[2];
+        if (!refId) {
+          console.error('Usage: acr-meta-mcp vault delete <refId>');
+          process.exit(1);
+        }
+        const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vault/secrets/${refId}`, {
+          method: 'DELETE',
+        });
+        const data = await res.json();
+        console.log('[ACR Meta-MCP Vault] Deleted secret:', data);
+      } else if (subAction === 'rotate') {
+        const newMasterSecret = args[2];
+        if (!newMasterSecret) {
+          console.error('Usage: acr-meta-mcp vault rotate <newMasterPassphrase>');
+          process.exit(1);
+        }
+        const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vault/rotate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ newMasterSecret }),
+        });
+        const data = await res.json();
+        console.log('[ACR Meta-MCP Vault] Master key rotated:', data);
+      } else {
+        console.error('Unknown vault action. Valid: list | set | delete | rotate');
+      }
+      break;
+    }
+
     case 'audit': {
       const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/audit?limit=20`);
       const data = (await res.json()) as any;
@@ -120,6 +179,7 @@ Usage:
   acr-meta-mcp disable <serverId>
   acr-meta-mcp tools [raw|policy|projected]
   acr-meta-mcp call <tool_name> [json_args]
+  acr-meta-mcp vault [list|set|delete|rotate]
   acr-meta-mcp audit
 `);
   }
