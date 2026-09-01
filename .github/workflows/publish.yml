@@ -1,0 +1,33 @@
+# .github/workflows/publish.yml
+name: Publish Package to npmjs
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      NPM_REGISTRY_TOKEN: ${{ secrets.NPM_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Configure npm registry auth
+        run: |
+          cat > .npmrc <<'EOF'
+          //registry.npmjs.org/:_authToken=${NPM_REGISTRY_TOKEN}
+          EOF
+
+      - run: npm ci || npm install
+      - run: npm run build --if-present
+      - run: npm test --if-present
+      - run: npm publish --provenance --access public
