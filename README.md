@@ -147,6 +147,12 @@ acr-meta-mcp vault set context7 CONTEXT7_API_KEY "ctx7sk_..." personal chacha20-
 acr-meta-mcp vault rotate "new-secure-passphrase"
 acr-meta-mcp vault delete sec_ref_context7_context7_api_key
 
+# Manage and test dynamic port bindings
+acr-meta-mcp ports list
+acr-meta-mcp ports set acr-meta-mcp 20495
+acr-meta-mcp ports test
+acr-meta-mcp ports export
+
 # View audit logs
 acr-meta-mcp audit
 ```
@@ -159,6 +165,9 @@ acr meta-mcp tools --view=projected
 acr meta-mcp call context7__resolve-library-id '{"libraryName":"React"}'
 acr meta-mcp vault list
 acr meta-mcp vault set --server=github --key=GITHUB_TOKEN --value="ghp_..."
+acr ports list
+acr ports set acr-meta-mcp 20495
+acr ports test
 acr meta-mcp audit
 ```
 
