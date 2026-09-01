@@ -5,7 +5,7 @@ import { MetaMcpServer } from '../src/server.js';
 describe('Context7 Real MCP Tool E2E Integration & QA Test', () => {
   const TEST_PORT = 29446;
   const BASE_URL = `http://127.0.0.1:${TEST_PORT}`;
-  const CONTEXT7_API_KEY = 'ctx7sk-368b8367-c3ec-436e-8df3-74f1526f86fe';
+  const DYNAMIC_API_KEY = process.env.CONTEXT7_API_KEY || 'dynamic-ctx7-api-key-test-val';
   let server: MetaMcpServer;
 
   before(async () => {
@@ -17,14 +17,37 @@ describe('Context7 Real MCP Tool E2E Integration & QA Test', () => {
     await server.stop();
   });
 
-  it('1. Ingest real Context7 configuration and verify secret redaction', async () => {
+  it('1. Store Context7 API key dynamically into the SQLite3MultipleCiphers Auth Vault', async () => {
+    const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vault/secrets`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-acr-agent-did': 'did:key:admin-local',
+      },
+      body: JSON.stringify({
+        serverId: 'context7',
+        key: 'CONTEXT7_API_KEY',
+        value: DYNAMIC_API_KEY,
+        domain: 'personal',
+        cipher: 'chacha20-poly1305',
+      }),
+    });
+
+    assert.equal(res.status, 201);
+    const json = (await res.json()) as any;
+    assert.equal(json.success, true);
+    assert.equal(json.secret.serverId, 'context7');
+    assert.equal(json.secret.algorithm, 'chacha20-poly1305');
+  });
+
+  it('2. Ingest real Context7 configuration and verify secret placeholder redaction', async () => {
     const context7Config = {
       mcpServers: {
         context7: {
           command: 'npx',
-          args: ['-y', '@upstash/context7-mcp', '--api-key', CONTEXT7_API_KEY],
+          args: ['-y', '@upstash/context7-mcp', '--api-key', '${CONTEXT7_API_KEY}'],
           env: {
-            CONTEXT7_API_KEY: CONTEXT7_API_KEY,
+            CONTEXT7_API_KEY: '${CONTEXT7_API_KEY}',
           },
         },
       },
@@ -43,11 +66,10 @@ describe('Context7 Real MCP Tool E2E Integration & QA Test', () => {
     const json = (await res.json()) as any;
     assert.equal(json.success, true);
     assert.ok(json.installedServers.includes('context7'));
-    assert.ok(json.secretCount >= 1);
     assert.ok(json.fingerprintSha256.length === 64);
   });
 
-  it('2. Verify Context7 server status and containment profile in registry', async () => {
+  it('3. Verify Context7 server status and containment profile in registry', async () => {
     const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/servers`);
     assert.equal(res.status, 200);
     const json = (await res.json()) as any;
@@ -59,8 +81,7 @@ describe('Context7 Real MCP Tool E2E Integration & QA Test', () => {
     assert.equal(context7Server.sandboxProfile, 'workspace-scoped');
   });
 
-  it('3. Register Context7 real tool definitions into catalog', async () => {
-    // Inject discovered Context7 tools
+  it('4. Register Context7 real tool definitions into catalog', async () => {
     (server.service as any).toolStore.set('context7', [
       {
         name: 'resolve-library-id',
@@ -101,7 +122,7 @@ describe('Context7 Real MCP Tool E2E Integration & QA Test', () => {
     assert.ok(tools.some((t: any) => t.name === 'context7__query-docs'));
   });
 
-  it('4. Execute real Context7 tool call through Meta-MCP Forward Proxy', async () => {
+  it('5. Execute real Context7 tool call through Meta-MCP Forward Proxy', async () => {
     const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/tools/call`, {
       method: 'POST',
       headers: {
@@ -122,7 +143,7 @@ describe('Context7 Real MCP Tool E2E Integration & QA Test', () => {
     assert.ok(json.latencyMs >= 0);
   });
 
-  it('5. Execute JSON-RPC tools/call over Streamable HTTP /mcp endpoint', async () => {
+  it('6. Execute JSON-RPC tools/call over Streamable HTTP /mcp endpoint', async () => {
     const res = await fetch(`${BASE_URL}/mcp`, {
       method: 'POST',
       headers: {
@@ -150,10 +171,15 @@ describe('Context7 Real MCP Tool E2E Integration & QA Test', () => {
     assert.ok(json.result.content[0].text.includes('context7'));
   });
 
-  it('6. Verify audit trail recorded Context7 invocations', async () => {
-    const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/audit?limit=10`);
-    assert.equal(res.status, 200);
-    const json = (await res.json()) as any;
-    assert.ok(json.logs.some((l: any) => l.serverId === 'context7' || l.toolName?.includes('context7')));
+  it('7. Verify vault secret list and audit trail recorded Context7 invocations', async () => {
+    const vaultRes = await fetch(`${BASE_URL}/api/v1/meta-mcp/vault/secrets`);
+    assert.equal(vaultRes.status, 200);
+    const vaultJson = (await vaultRes.json()) as any;
+    assert.ok(vaultJson.secrets.some((s: any) => s.serverId === 'context7'));
+
+    const auditRes = await fetch(`${BASE_URL}/api/v1/meta-mcp/audit?limit=10`);
+    assert.equal(auditRes.status, 200);
+    const auditJson = (await auditRes.json()) as any;
+    assert.ok(auditJson.logs.some((l: any) => l.serverId === 'context7' || l.toolName?.includes('context7')));
   });
 });

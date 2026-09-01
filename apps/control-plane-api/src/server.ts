@@ -163,6 +163,48 @@ export class MetaMcpServer {
         return;
       }
 
+      // ─── Vault Management (SQLite3MultipleCiphers & SQLCipher Engine) ──────
+      if (req.method === 'GET' && pathname === '/api/v1/meta-mcp/vault/secrets') {
+        const secrets = this.service.listVaultSecrets();
+        this.sendJson(res, 200, { secrets, count: secrets.length });
+        return;
+      }
+
+      if (req.method === 'POST' && pathname === '/api/v1/meta-mcp/vault/secrets') {
+        const body = await this.parseJsonBody(req);
+        if (!body.serverId || !body.key || !body.value) {
+          this.sendJson(res, 400, { error: 'Missing "serverId", "key", or "value" in payload.' });
+          return;
+        }
+        const created = this.service.storeVaultSecret(
+          body.serverId,
+          body.key,
+          body.value,
+          body.domain || 'personal',
+          body.cipher || 'aes-256-gcm'
+        );
+        this.sendJson(res, 201, { success: true, secret: created });
+        return;
+      }
+
+      if (req.method === 'DELETE' && pathname.startsWith('/api/v1/meta-mcp/vault/secrets/')) {
+        const refId = pathname.replace('/api/v1/meta-mcp/vault/secrets/', '');
+        const deleted = this.service.deleteVaultSecret(refId);
+        this.sendJson(res, 200, { success: deleted, refId });
+        return;
+      }
+
+      if (req.method === 'POST' && pathname === '/api/v1/meta-mcp/vault/rotate') {
+        const body = await this.parseJsonBody(req);
+        if (!body.newMasterSecret) {
+          this.sendJson(res, 400, { error: 'Missing "newMasterSecret" in payload.' });
+          return;
+        }
+        this.service.rotateVaultMasterKey(body.newMasterSecret);
+        this.sendJson(res, 200, { success: true, message: 'Vault master key rotated and database re-encrypted.' });
+        return;
+      }
+
       // ─── Audit Trail ───────────────────────────────────────────────
       if (req.method === 'GET' && pathname === '/api/v1/meta-mcp/audit') {
         const limit = parseInt(url.searchParams.get('limit') || '50', 10);
@@ -235,7 +277,8 @@ export class MetaMcpServer {
       // Not found
       this.sendJson(res, 404, { error: `Endpoint "${pathname}" not found on ACR Meta-MCP Control Plane.` });
     } catch (err: any) {
-      this.sendJson(res, 500, { error: err.message });
+      console.error('Server error in handleRequest:', err);
+      this.sendJson(res, 500, { error: err.message, stack: err.stack });
     }
   }
 

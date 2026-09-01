@@ -1,8 +1,15 @@
 import { compileInstallManifest } from '../../../packages/config-parser/src/index.js';
-import { AuthVault } from '../../../packages/auth-vault/src/index.js';
+import { AuthVault, CipherAlgorithm, VaultDomain } from '../../../packages/auth-vault/src/index.js';
 import { DEFAULT_SANDBOX_PROFILES } from '../../../packages/sandbox-runtime/src/index.js';
 import { PolicyEngine } from '../../../packages/policy-engine/src/index.js';
-import { CatalogProjector, denamespaceTool, McpToolDefinition } from '../../../packages/catalog-projector/src/index.js';
+import {
+  CatalogProjector,
+  denamespaceTool,
+  McpToolDefinition,
+  PolicyCatalog,
+  ProjectedCatalog,
+  RawCatalog,
+} from '../../../packages/catalog-projector/src/index.js';
 import { MetaMcpRegistry } from '../../../packages/registry-core/src/index.js';
 import { TransportBridge } from '../../../packages/transport-bridge/src/index.js';
 import { AuditLogger } from './audit.js';
@@ -16,7 +23,7 @@ export class MetaMcpService {
   public readonly projector: CatalogProjector;
 
   // Cached tool definitions per server
-  private readonly toolStore = new Map<string, Array<{ name: string; description?: string; inputSchema?: any }>>();
+  public readonly toolStore = new Map<string, Array<{ name: string; description?: string; inputSchema?: any }>>();
 
   constructor() {
     this.projector = new CatalogProjector({
@@ -59,14 +66,19 @@ export class MetaMcpService {
       { name: 'list_workspace_dir', description: 'List files in scoped workspace directory', inputSchema: { type: 'object', properties: { dir: { type: 'string' } } } },
     ]);
 
-    // 3. Context7 Real-Time Documentation Server & Vaulted Key
-    this.vault.storeSecret(
-      'sec_ref_context7_api_key',
-      'context7',
-      'CONTEXT7_API_KEY',
-      process.env.CONTEXT7_API_KEY || 'ctx7sk-368b8367-c3ec-436e-8df3-74f1526f86fe',
-      'personal'
-    );
+    // 3. Context7 Real-Time Documentation Server (Dynamic Secret Ingestion from Runtime Env)
+    const envCtx7Key = process.env.CONTEXT7_API_KEY;
+    if (envCtx7Key) {
+      this.vault.storeSecret(
+        'sec_ref_context7_api_key',
+        'context7',
+        'CONTEXT7_API_KEY',
+        envCtx7Key,
+        'personal',
+        'chacha20-poly1305'
+      );
+    }
+
     this.registry.registerServer('context7', {
       displayName: 'Context7 Real-Time Library Docs MCP',
       transport: 'stdio',
@@ -113,26 +125,35 @@ export class MetaMcpService {
     const manifest = compileInstallManifest(rawConfig);
 
     for (const serverSpec of manifest.servers) {
-      // Store secret references in vault
-      for (const ref of serverSpec.secretRefs) {
-        this.vault.storeSecret(ref.refId, ref.serverId, ref.key, ref.originalValue, ref.domain);
-      }
-
-      // Register server in registry
+      // Register or update server
       this.registry.registerServer(serverSpec.serverId, {
-        displayName: serverSpec.displayName,
+        displayName: serverSpec.serverId,
         transport: serverSpec.transport,
+        trustLevel: 'untrusted',
         sandboxProfile: serverSpec.transport === 'stdio' ? 'workspace-scoped' : 'egress-allowlist',
-        manifestFingerprint: manifest.fingerprintSha256,
-        configSpec: serverSpec.stdioSpec ? (serverSpec.stdioSpec as any) : (serverSpec.remoteSpec as any),
+        configSpec: serverSpec.transport === 'stdio' 
+          ? { command: serverSpec.stdioSpec?.command || '', args: serverSpec.stdioSpec?.args || [], env: serverSpec.stdioSpec?.envRefs || {} }
+          : { url: serverSpec.remoteSpec?.url || '', headers: serverSpec.remoteSpec?.headerRefs || {} },
       });
 
-      // Default mock toolset for newly imported server until discovered
+      // Default mock tools for newly imported server if none yet discovered
       this.toolStore.set(serverSpec.serverId, [
-        { name: 'ping', description: `Health ping for ${serverSpec.serverId}` },
-        { name: 'status', description: `Check runtime status for ${serverSpec.serverId}` },
+        {
+          name: 'status',
+          description: `Get real-time operational status of ${serverSpec.serverId}`,
+          inputSchema: { type: 'object' },
+        },
+        {
+          name: 'ping',
+          description: `Verify end-to-end responsiveness of ${serverSpec.serverId}`,
+          inputSchema: { type: 'object' },
+        }
       ]);
-      this.registry.updateHealth(serverSpec.serverId, 'ONLINE', 2);
+
+      // Vault extracted secrets
+      for (const sec of serverSpec.secretRefs) {
+        this.vault.storeSecret(sec.refId, serverSpec.serverId, sec.key, sec.originalValue || '', sec.domain);
+      }
     }
 
     this.auditLogger.record({
@@ -140,9 +161,9 @@ export class MetaMcpService {
       actorDid,
       status: 'SUCCESS',
       details: {
-        totalServers: manifest.totalServers,
-        fingerprint: manifest.fingerprintSha256,
-        servers: manifest.servers.map((s) => s.serverId),
+        manifestVersion: manifest.manifestVersion,
+        fingerprintSha256: manifest.fingerprintSha256,
+        serverCount: manifest.servers.length,
       },
     });
 
@@ -154,20 +175,24 @@ export class MetaMcpService {
     };
   }
 
-  public getRawCatalog() {
-    const map: Record<string, any[]> = {};
+  private buildServerToolMap(): Record<string, Array<{ name: string; description?: string; inputSchema?: any }>> {
+    const map: Record<string, Array<{ name: string; description?: string; inputSchema?: any }>> = {};
     for (const [sId, tools] of this.toolStore.entries()) {
       map[sId] = tools;
     }
-    return this.projector.buildRawCatalog(map);
+    return map;
   }
 
-  public getPolicyCatalog() {
+  public getRawCatalog(): RawCatalog {
+    return this.projector.buildRawCatalog(this.buildServerToolMap());
+  }
+
+  public getPolicyCatalog(): PolicyCatalog {
     const raw = this.getRawCatalog();
     return this.projector.buildPolicyCatalog(raw);
   }
 
-  public getProjectedCatalog(caller: { did: string; role: string; capabilities?: string[]; allowedPrefixes?: string[] }) {
+  public getProjectedCatalog(caller: { did: string; role: string; capabilities?: string[]; allowedPrefixes?: string[] }): ProjectedCatalog {
     const policy = this.getPolicyCatalog();
     return this.projector.projectForCaller(policy, caller);
   }
@@ -175,12 +200,12 @@ export class MetaMcpService {
   public async executeToolCall(
     caller: { did: string; role: 'admin' | 'agent' | 'human_operator' | 'guest'; roomContext?: string },
     namespacedToolName: string,
-    args: Record<string, unknown>
+    args: Record<string, unknown> = {}
   ): Promise<{ result: any; latencyMs: number; status: 'SUCCESS' | 'DENIED' | 'ERROR' }> {
     const startTime = Date.now();
     const { serverId, originalName } = denamespaceTool(namespacedToolName);
 
-    // 1. Evaluate Policy Engine
+    // 1. Dual-Consent Policy Evaluation
     const decision = this.policyEngine.evaluateToolCall(caller, serverId, namespacedToolName, caller.roomContext);
 
     if (!decision.allowed) {
@@ -235,17 +260,19 @@ export class MetaMcpService {
       } else if (originalName === 'resolve-library-id') {
         const lib = (args.libraryName as string) || 'Next.js';
         const libId = lib.toLowerCase().includes('next') ? '/vercel/next.js' : `/${lib.toLowerCase()}/${lib.toLowerCase()}`;
+        const hasKey = this.vault.getSecret('sec_ref_context7_api_key') !== null;
         executionContent = {
           content: [{
             type: 'text',
-            text: `[context7] Resolved library "${lib}" -> ID "${libId}" (Vaulted Key Auth: Verified).`
+            text: `[context7] Resolved library "${lib}" -> ID "${libId}" (Vaulted Key Auth: ${hasKey ? 'Verified from Encrypted DB' : 'Dynamic Session'}).`
           }],
         };
       } else if (originalName === 'query-docs') {
+        const hasKey = this.vault.getSecret('sec_ref_context7_api_key') !== null;
         executionContent = {
           content: [{
             type: 'text',
-            text: `[context7] Documentation query for "${args.libraryId || '/vercel/next.js'}" on "${args.query || 'general'}":\n• App Router & Server Actions API Spec\n• Auth: Verified with Auth Vault credential: sec_ref_context7_api_key`
+            text: `[context7] Documentation query for "${args.libraryId || '/vercel/next.js'}" on "${args.query || 'general'}":\n• App Router & Server Actions API Spec\n• Auth: ${hasKey ? 'Verified with Isolated SQLite MultipleCiphers DB' : 'Dynamic Session'}`
           }],
         };
       } else {
@@ -262,14 +289,18 @@ export class MetaMcpService {
         toolName: namespacedToolName,
         status: 'SUCCESS',
         latencyMs,
-        details: { args, resultSummary: 'Success' },
+        details: { args, resultPreview: executionContent },
       });
 
-      return { result: executionContent, latencyMs, status: 'SUCCESS' };
+      return {
+        result: executionContent,
+        latencyMs,
+        status: 'SUCCESS',
+      };
     } catch (err: any) {
       const latencyMs = Date.now() - startTime;
       this.auditLogger.record({
-        eventType: 'TOOL_CALL',
+        eventType: 'POLICY_VIOLATION',
         actorDid: caller.did,
         serverId,
         toolName: namespacedToolName,
@@ -277,7 +308,44 @@ export class MetaMcpService {
         latencyMs,
         details: { error: err.message },
       });
-      return { result: { isError: true, error: err.message }, latencyMs, status: 'ERROR' };
+
+      return {
+        result: { isError: true, error: err.message },
+        latencyMs,
+        status: 'ERROR',
+      };
     }
+  }
+
+  // Vault Management Surface
+  public storeVaultSecret(
+    serverId: string,
+    key: string,
+    value: string,
+    domain: VaultDomain = 'personal',
+    cipher: CipherAlgorithm = 'aes-256-gcm'
+  ) {
+    const refId = `sec_ref_${serverId}_${key.toLowerCase()}`;
+    const entry = this.vault.storeSecret(refId, serverId, key, value, domain, cipher);
+    return {
+      refId: entry.refId,
+      serverId: entry.serverId,
+      key: entry.key,
+      domain: entry.domain,
+      algorithm: entry.algorithm,
+      createdAt: entry.createdAt,
+    };
+  }
+
+  public listVaultSecrets() {
+    return this.vault.listSecretRefs();
+  }
+
+  public deleteVaultSecret(refId: string): boolean {
+    return this.vault.deleteSecret(refId);
+  }
+
+  public rotateVaultMasterKey(newMasterSecret: string): void {
+    this.vault.rotateMasterKey(newMasterSecret);
   }
 }
