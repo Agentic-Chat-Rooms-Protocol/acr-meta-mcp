@@ -66,4 +66,22 @@ describe('WasmExecutor: Fuel-Metered WebAssembly Sandbox Runtime', () => {
     assert.equal(res.fuelRemaining, 0);
     assert.match(res.error!, /exceeded fuel budget/);
   });
+
+  it('aborts with timeout when task execution exceeds timeoutMs', () => {
+    const executor = new WasmExecutor({ timeoutMs: 20 });
+    const res = executor.executeTask(
+      1,
+      1,
+      () => {
+        // Busy wait for > 30ms to exceed 20ms timeout
+        const start = Date.now();
+        while (Date.now() - start < 35) {}
+        return 'delayed';
+      }
+    );
+
+    assert.equal(res.success, false);
+    assert.equal(res.exitReason, 'timeout');
+    assert.match(res.error!, /exceeded wall-clock timeout/);
+  });
 });

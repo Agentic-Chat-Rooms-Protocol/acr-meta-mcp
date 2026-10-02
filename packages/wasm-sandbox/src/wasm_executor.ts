@@ -129,8 +129,24 @@ export class WasmExecutor {
         };
       }
 
-      // Execute entrypoint
-      const result = fn(...args);
+      // Execute entrypoint with timeout guard
+      let timer: NodeJS.Timeout | null = null;
+      const executeFn = async () => fn(...args);
+      const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const timeoutErr = new Error(`WASM execution exceeded timeout (${this.timeoutMs}ms)`);
+          (timeoutErr as any).name = 'TimeoutError';
+          reject(timeoutErr);
+        }, this.timeoutMs);
+      });
+
+      let result: any;
+      try {
+        result = await Promise.race([executeFn(), timeoutPromise]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+
       const durationMs = Date.now() - startTime;
       const fuelConsumed = initialFuel - fuelRemaining;
 
@@ -147,6 +163,19 @@ export class WasmExecutor {
     } catch (err: any) {
       const durationMs = Date.now() - startTime;
       const fuelConsumed = initialFuel - fuelRemaining;
+
+      if (err.name === 'TimeoutError' || (err.message && err.message.includes('exceeded timeout'))) {
+        return {
+          success: false,
+          fuelConsumed,
+          fuelRemaining,
+          memoryBytesUsed: wasmMemory.buffer.byteLength,
+          durationMs,
+          logs,
+          error: err.message,
+          exitReason: 'timeout',
+        };
+      }
 
       if (err instanceof FuelExhaustedError) {
         return {
@@ -215,13 +244,26 @@ export class WasmExecutor {
 
     try {
       const res = work();
+      const durationMs = Date.now() - startTime;
+      if (durationMs > this.timeoutMs) {
+        return {
+          success: false,
+          fuelConsumed: totalCost,
+          fuelRemaining: allocatedFuel - totalCost,
+          memoryBytesUsed: 65536,
+          durationMs,
+          logs: [],
+          error: `Task execution exceeded wall-clock timeout (${this.timeoutMs}ms)`,
+          exitReason: 'timeout',
+        };
+      }
       return {
         success: true,
         result: res,
         fuelConsumed: totalCost,
         fuelRemaining: allocatedFuel - totalCost,
         memoryBytesUsed: 65536,
-        durationMs: Date.now() - startTime,
+        durationMs,
         logs: [],
         exitReason: 'ok',
       };

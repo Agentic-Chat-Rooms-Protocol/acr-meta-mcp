@@ -98,4 +98,23 @@ describe('RoleClaim: 10-Bit Capability Bitmask & HMAC-SHA256 Role Claims', () =>
     assert.equal(bridge.hasCapability(verified.caps, Caps.SYSOP), true);
     assert.equal(bridge.hasCapability(verified.caps, Caps.MODERATE), true);
   });
+
+  it('tolerates bounded clock skew when configured', () => {
+    const now = 1000000;
+    const exp = now - 50; // Expired 50 seconds ago according to host clock
+    const sig = signRoleClaim(secret, 'moderator', exp);
+
+    // Without skew tolerance: rejected as expired
+    const strictRes = verifyRoleClaim(secret, 'moderator', exp, sig, now);
+    assert.equal(strictRes.valid, false);
+
+    // With 60 seconds skew tolerance: accepted
+    const skewRes = verifyRoleClaim(secret, 'moderator', exp, sig, now, { clockSkewToleranceSeconds: 60 });
+    assert.equal(skewRes.valid, true);
+    assert.equal(skewRes.role, 'moderator');
+
+    // Beyond skew tolerance (e.g. 50s expired vs 30s tolerance): rejected
+    const expiredRes = verifyRoleClaim(secret, 'moderator', exp, sig, now, { clockSkewToleranceSeconds: 30 });
+    assert.equal(expiredRes.valid, false);
+  });
 });

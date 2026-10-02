@@ -67,14 +67,16 @@ export function verifyRoleClaim(
   claimedRole: string,
   expSeconds: number,
   sigHex: string,
-  nowSeconds = Math.floor(Date.now() / 1000)
+  nowSeconds = Math.floor(Date.now() / 1000),
+  options: { clockSkewToleranceSeconds?: number } = {}
 ): VerificationResult {
   // Canonical fallback
   const fallbackRole: Role = 'agent';
   const fallbackCaps = ROLE_CAPS[fallbackRole];
+  const skew = options.clockSkewToleranceSeconds ?? 0;
 
-  // 1. Validate expiration freshness
-  if (!expSeconds || expSeconds <= nowSeconds) {
+  // 1. Validate expiration freshness with optional clock skew tolerance
+  if (!expSeconds || (expSeconds + skew) <= nowSeconds) {
     return {
       valid: false,
       role: fallbackRole,
@@ -139,8 +141,12 @@ export class RoleClaimBridge {
     return { role, exp, sig_hex };
   }
 
-  public verify(claim: { role: string; exp: number; sig_hex: string }, nowSeconds?: number): VerificationResult {
-    return verifyRoleClaim(this.sharedSecret, claim.role, claim.exp, claim.sig_hex, nowSeconds);
+  public verify(
+    claim: { role: string; exp: number; sig_hex: string },
+    nowSeconds?: number,
+    options: { clockSkewToleranceSeconds?: number } = {}
+  ): VerificationResult {
+    return verifyRoleClaim(this.sharedSecret, claim.role, claim.exp, claim.sig_hex, nowSeconds, options);
   }
 
   public hasCapability(caps: number, capFlag: number): boolean {
