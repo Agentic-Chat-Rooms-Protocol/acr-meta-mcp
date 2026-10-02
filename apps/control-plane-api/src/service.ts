@@ -12,6 +12,7 @@ import {
 } from '../../../packages/catalog-projector/src/index.js';
 import { MetaMcpRegistry } from '../../../packages/registry-core/src/index.js';
 import { TransportBridge } from '../../../packages/transport-bridge/src/index.js';
+import { PayloadGuard } from '../../../packages/tool-governance/src/index.js';
 import { AuditLogger } from './audit.js';
 
 export class MetaMcpService {
@@ -20,6 +21,7 @@ export class MetaMcpService {
   public readonly policyEngine = new PolicyEngine();
   public readonly bridge = new TransportBridge();
   public readonly auditLogger = new AuditLogger();
+  public readonly payloadGuard = new PayloadGuard();
   public readonly projector: CatalogProjector;
 
   // Cached tool definitions per server
@@ -238,7 +240,31 @@ export class MetaMcpService {
       };
     }
 
-    // 3. Execution Simulation or Live Dispatch
+    // 3. PayloadGuard: Pre-flight prompt injection firewall & policy guard
+    const guardCheck = this.payloadGuard.guardToolCall(originalName, args);
+    if (!guardCheck.allowed) {
+      const latencyMs = Date.now() - startTime;
+      this.auditLogger.record({
+        eventType: 'PAYLOAD_GUARD_INTERCEPT',
+        actorDid: caller.did,
+        serverId,
+        toolName: namespacedToolName,
+        status: 'DENIED',
+        latencyMs,
+        details: { reasons: guardCheck.scan.reasons },
+      });
+      return {
+        result: {
+          isError: true,
+          error: `HTTP 422 Unprocessable Entity: PayloadGuard intercepted malicious prompt injection or policy violation: ${guardCheck.scan.reasons.join('; ')}`,
+          scan: guardCheck.scan,
+        },
+        latencyMs,
+        status: 'DENIED',
+      };
+    }
+
+    // 4. Execution Simulation or Live Dispatch
     let executionContent: any;
     try {
       if (originalName === 'ping' || originalName === 'status') {

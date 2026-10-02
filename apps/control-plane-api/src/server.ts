@@ -159,7 +159,29 @@ export class MetaMcpServer {
         }
 
         const result = await this.service.executeToolCall(caller, toolName, args);
-        this.sendJson(res, result.status === 'SUCCESS' ? 200 : (result.status === 'DENIED' ? 403 : 500), result);
+        let statusCode = 200;
+        if (result.status === 'DENIED') {
+          statusCode = result.result?.error?.includes('422') ? 422 : 403;
+        } else if (result.status === 'ERROR') {
+          statusCode = 500;
+        }
+        this.sendJson(res, statusCode, result);
+        return;
+      }
+
+      // ─── PayloadGuard Scan Endpoint ───────────────────────────────
+      if (req.method === 'POST' && pathname === '/api/v1/meta-mcp/guard/scan') {
+        const body = await this.parseJsonBody(req);
+        const scan = this.service.payloadGuard.scan(body.payload ?? body);
+        this.sendJson(res, scan.level === 'malicious' ? 422 : 200, scan);
+        return;
+      }
+
+      // ─── PayloadGuard Scrub Endpoint ──────────────────────────────
+      if (req.method === 'POST' && pathname === '/api/v1/meta-mcp/guard/scrub') {
+        const body = await this.parseJsonBody(req);
+        const sanitized = this.service.payloadGuard.sanitize(body.payload ?? body);
+        this.sendJson(res, 200, sanitized);
         return;
       }
 
