@@ -150,7 +150,7 @@ export class PayloadGuard {
   public readonly canaries: CanaryManager;
   public readonly audit: AuditLedger;
 
-  private readonly gateRegex = /[\d@]/;
+  private readonly gateRegex = /[\d@]|(?:AKIA|ASIA|\bey|(?:sk|pk|rk)[-_]|MRN|mrn)/i;
   private readonly zeroWidthRegex = /[\u200B-\u200D\uFEFF]/;
 
   constructor(config: PayloadGuardConfig = {}) {

@@ -161,4 +161,16 @@ describe('PayloadGuard: Enterprise Prompt Injection & PII Firewall', () => {
     assert.equal(entries[1].prev, entries[0].hash);
     assert.equal(entries[2].prev, entries[1].hash);
   });
+
+  it('should redact letter-only API keys and MRNs lacking digits or at-symbols', () => {
+    const guard = new PayloadGuard({ redactionMode: 'mask' });
+    const resApiKey = guard.redactText('Use key sk-live-abcdefghijklmnop to authenticate');
+    assert.equal(resApiKey.text, 'Use key <API_KEY> to authenticate');
+    assert.equal(resApiKey.redactions.length, 1);
+
+    const resMrn = guard.redactText('Patient MRN: ABCDEF was admitted today');
+    assert.equal(resMrn.text, 'Patient <MRN> was admitted today');
+    assert.equal(resMrn.redactions.length, 1);
+  });
 });
+
