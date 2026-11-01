@@ -13,6 +13,7 @@ import {
 import { MetaMcpRegistry } from '../../../packages/registry-core/src/index.js';
 import { TransportBridge } from '../../../packages/transport-bridge/src/index.js';
 import { PayloadGuard } from '../../../packages/tool-governance/src/index.js';
+import { VcsCatalog, VcsProviderConfig } from '../../../packages/vcs-catalog/src/index.js';
 import { AuditLogger } from './audit.js';
 
 export class MetaMcpService {
@@ -22,6 +23,7 @@ export class MetaMcpService {
   public readonly bridge = new TransportBridge();
   public readonly auditLogger = new AuditLogger();
   public readonly payloadGuard = new PayloadGuard();
+  public readonly vcsCatalog = new VcsCatalog();
   public readonly projector: CatalogProjector;
 
   // Cached tool definitions per server
@@ -36,6 +38,7 @@ export class MetaMcpService {
 
     // Seed standard demo / verified server so Meta-MCP is immediately operable out of the box
     this.seedDefaultServers();
+    this.seedVcsProviders();
   }
 
   private seedDefaultServers(): void {
@@ -116,6 +119,48 @@ export class MetaMcpService {
         },
       },
     ]);
+  }
+
+  public registerVcsProvider(config: VcsProviderConfig): void {
+    const adapter = this.vcsCatalog.registerConfig(config);
+    const serverId = `vcs-${adapter.name}`;
+    this.registry.registerServer(serverId, {
+      displayName: config.displayName || `${adapter.name} (${adapter.providerType.toUpperCase()})`,
+      transport: 'streamable_http',
+      trustLevel: 'verified',
+      sandboxProfile: 'egress-allowlist',
+      configSpec: {
+        type: adapter.providerType,
+        baseUrl: adapter.config.baseUrl,
+      },
+    });
+    this.registry.updateHealth(serverId, 'ONLINE', 11);
+
+    const tools = this.vcsCatalog.exportMcpTools('vcs').filter((t) => t.serverId === serverId);
+    this.toolStore.set(
+      serverId,
+      tools.map((t) => ({
+        name: t.originalName,
+        description: t.description,
+        inputSchema: t.inputSchema,
+      }))
+    );
+  }
+
+  private seedVcsProviders(): void {
+    const defaultConfigs: VcsProviderConfig[] = [
+      { type: 'github', name: 'github', displayName: 'GitHub Cloud & Enterprise VCS' },
+      { type: 'gitlab', name: 'gitlab', displayName: 'GitLab DevOps & VCS' },
+      { type: 'bitbucket', name: 'bitbucket', displayName: 'Atlassian Bitbucket VCS' },
+      { type: 'gitea', name: 'gitea', displayName: 'ACR Sovereign Gitea VCS (Port 3300)', baseUrl: 'http://127.0.0.1:3300/api/v1' },
+      { type: 'forgejo', name: 'forgejo', displayName: 'Forgejo Sovereign VCS' },
+      { type: 'azure-devops', name: 'azure-devops', displayName: 'Azure DevOps Git & Work Items' },
+      { type: 'gitee', name: 'gitee', displayName: 'Gitee Open Source VCS' },
+    ];
+
+    for (const cfg of defaultConfigs) {
+      this.registerVcsProvider(cfg);
+    }
   }
 
   public importMcpConfig(rawConfig: string, actorDid = 'did:key:admin-local'): {
@@ -267,7 +312,18 @@ export class MetaMcpService {
     // 4. Execution Simulation or Live Dispatch
     let executionContent: any;
     try {
-      if (originalName === 'ping' || originalName === 'status') {
+      if (serverId.startsWith('vcs-') || serverId.startsWith('vcs__')) {
+        try {
+          const vcsData = await this.vcsCatalog.dispatchMcpTool(namespacedToolName, args);
+          executionContent = {
+            content: [{ type: 'text', text: JSON.stringify(vcsData, null, 2) }],
+          };
+        } catch (err: any) {
+          executionContent = {
+            content: [{ type: 'text', text: `[${serverId}] ${err.message}` }],
+          };
+        }
+      } else if (originalName === 'ping' || originalName === 'status') {
         executionContent = {
           content: [{ type: 'text', text: `[${serverId}] Pong. Meta-MCP Forward Proxy operational. Latency: 0.24ms` }],
         };

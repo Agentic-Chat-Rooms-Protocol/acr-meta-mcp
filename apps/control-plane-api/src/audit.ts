@@ -1,7 +1,7 @@
 export interface AuditLogEntry {
   id: string;
   timestamp: string;
-  eventType: 'CONFIG_IMPORT' | 'SERVER_TOGGLE' | 'SERVER_QUARANTINE' | 'TOOL_CALL' | 'POLICY_VIOLATION' | 'AUTH_ACCESS' | 'PAYLOAD_GUARD_INTERCEPT';
+  eventType: 'CONFIG_IMPORT' | 'SERVER_TOGGLE' | 'SERVER_QUARANTINE' | 'TOOL_CALL' | 'POLICY_VIOLATION' | 'AUTH_ACCESS' | 'PAYLOAD_GUARD_INTERCEPT' | 'VCS_PROVIDER_REGISTER';
   actorDid: string;
   serverId?: string;
   toolName?: string;

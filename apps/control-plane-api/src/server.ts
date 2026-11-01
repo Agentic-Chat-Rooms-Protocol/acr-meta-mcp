@@ -122,6 +122,60 @@ export class MetaMcpServer {
         return;
       }
 
+      // ─── VCS Provider Catalog Endpoints ───────────────────────────
+      if (req.method === 'GET' && pathname === '/api/v1/meta-mcp/vcs/providers') {
+        const adapters = this.service.vcsCatalog.listAdapters();
+        const providers = adapters.map((a) => ({
+          name: a.name,
+          type: a.providerType,
+          baseUrl: a.config.baseUrl,
+          hasToken: Boolean(a.config.token),
+          organization: a.config.organization,
+          project: a.config.project,
+        }));
+        this.sendJson(res, 200, { providers, count: providers.length });
+        return;
+      }
+
+      if (req.method === 'POST' && pathname === '/api/v1/meta-mcp/vcs/providers') {
+        const body = await this.parseJsonBody(req);
+        if (!body.type) {
+          this.sendJson(res, 400, { error: 'Missing required "type" field in VCS provider config.' });
+          return;
+        }
+        this.service.registerVcsProvider(body);
+        const registered = this.service.vcsCatalog.getAdapter(body.name || body.type);
+        this.service.auditLogger.record({
+          eventType: 'VCS_PROVIDER_REGISTER',
+          actorDid: (req.headers['x-acr-agent-did'] as string) || 'did:key:admin-local',
+          serverId: `vcs-${registered?.name || body.type}`,
+          status: 'SUCCESS',
+          details: { type: body.type, baseUrl: body.baseUrl },
+        });
+        this.sendJson(res, 201, {
+          success: true,
+          provider: {
+            name: registered?.name,
+            type: registered?.providerType,
+            baseUrl: registered?.config.baseUrl,
+          },
+        });
+        return;
+      }
+
+      const vcsHealthMatch = pathname.match(/^\/api\/v1\/meta-mcp\/vcs\/providers\/([^/]+)\/health$/);
+      if (req.method === 'GET' && vcsHealthMatch) {
+        const providerName = decodeURIComponent(vcsHealthMatch[1]);
+        const adapter = this.service.vcsCatalog.getAdapter(providerName);
+        if (!adapter) {
+          this.sendJson(res, 404, { error: `VCS provider "${providerName}" not found.` });
+          return;
+        }
+        const health = await adapter.healthCheck();
+        this.sendJson(res, 200, { success: true, provider: adapter.name, health });
+        return;
+      }
+
       // ─── Query Catalogs (Raw, Policy, Projected) ───────────────────
       if (req.method === 'GET' && pathname === '/api/v1/meta-mcp/tools') {
         const view = url.searchParams.get('view') || 'projected';

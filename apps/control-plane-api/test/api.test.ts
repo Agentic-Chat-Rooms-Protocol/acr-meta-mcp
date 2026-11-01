@@ -203,4 +203,74 @@ describe('Meta-MCP Control Plane API & JSON-RPC Gateway', () => {
     assert.ok(json.result.isError);
     assert.ok(json.result.error.includes('PayloadGuard intercepted malicious prompt injection'));
   });
+
+  it('GET /api/v1/meta-mcp/vcs/providers should list all 7 registered Git VCS adapters', async () => {
+    const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vcs/providers`);
+    assert.equal(res.status, 200);
+    const json = (await res.json()) as any;
+    assert.ok(Array.isArray(json.providers));
+    assert.ok(json.count >= 7);
+
+    const providerTypes = json.providers.map((p: any) => p.type);
+    assert.ok(providerTypes.includes('github'));
+    assert.ok(providerTypes.includes('gitlab'));
+    assert.ok(providerTypes.includes('bitbucket'));
+    assert.ok(providerTypes.includes('gitea'));
+    assert.ok(providerTypes.includes('forgejo'));
+    assert.ok(providerTypes.includes('azure-devops'));
+    assert.ok(providerTypes.includes('gitee'));
+  });
+
+  it('POST /api/v1/meta-mcp/vcs/providers should dynamically register self-hosted VCS instance', async () => {
+    const registerPayload = {
+      type: 'gitea',
+      name: 'internal-gitea',
+      baseUrl: 'http://127.0.0.1:3300/api/v1',
+      token: 'edef121158c5e714608f878af97b49c920ec4b37',
+    };
+
+    const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vcs/providers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-acr-agent-did': 'did:key:admin-local' },
+      body: JSON.stringify(registerPayload),
+    });
+
+    assert.equal(res.status, 201);
+    const json = (await res.json()) as any;
+    assert.equal(json.success, true);
+    assert.equal(json.provider.name, 'internal-gitea');
+    assert.equal(json.provider.type, 'gitea');
+
+    // Verify it appears in providers list
+    const listRes = await fetch(`${BASE_URL}/api/v1/meta-mcp/vcs/providers`);
+    const listJson = (await listRes.json()) as any;
+    const found = listJson.providers.find((p: any) => p.name === 'internal-gitea');
+    assert.ok(found);
+    assert.equal(found.hasToken, true);
+  });
+
+  it('GET /api/v1/meta-mcp/vcs/providers/:name/health should perform health check', async () => {
+    const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vcs/providers/github/health`);
+    assert.equal(res.status, 200);
+    const json = (await res.json()) as any;
+    assert.equal(json.success, true);
+    assert.equal(json.provider, 'github');
+    assert.ok(typeof json.health.latencyMs === 'number');
+  });
+
+  it('POST /api/v1/meta-mcp/tools/call should project and execute VCS tool calls', async () => {
+    const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/tools/call`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-acr-agent-did': 'did:key:test-agent' },
+      body: JSON.stringify({
+        toolName: 'vcs-github__health_check',
+        args: {},
+      }),
+    });
+
+    assert.equal(res.status, 200);
+    const json = (await res.json()) as any;
+    assert.equal(json.status, 'SUCCESS');
+    assert.ok(json.result.content[0].text);
+  });
 });

@@ -303,6 +303,30 @@ async function main() {
       break;
     }
 
+    case 'vcs': {
+      const subAction = args[1] || 'list';
+      if (subAction === 'list') {
+        const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vcs/providers`);
+        const data = (await res.json()) as any;
+        console.log('\n======================================================');
+        console.log(' ACR META-MCP GIT VCS PROVIDER CATALOG');
+        console.log('======================================================');
+        for (const p of data.providers || []) {
+          const authStatus = p.hasToken ? '[AUTH CONFIGURED]' : '[ANONYMOUS/DEFAULT]';
+          console.log(` • ${p.name.padEnd(16)} | ${p.type.padEnd(14)} | ${authStatus.padEnd(20)} | ${p.baseUrl || 'default'}`);
+        }
+        console.log(`\nTotal registered VCS adapters: ${data.count || 0}\n`);
+      } else if (subAction === 'health') {
+        const target = args[2] || 'gitea';
+        const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vcs/providers/${target}/health`);
+        const data = (await res.json()) as any;
+        console.log(`VCS Provider [${target}] Health:`, JSON.stringify(data, null, 2));
+      } else {
+        console.error('Unknown vcs action. Valid: list | health [provider]');
+      }
+      break;
+    }
+
     default:
       console.log(`
 ACR Meta-MCP Forward Proxy CLI (v0.8.2)
@@ -317,6 +341,7 @@ Usage:
   acr-meta-mcp call <tool_name> [json_args]
   acr-meta-mcp vault [list|set|delete|rotate]
   acr-meta-mcp ports [list|set|reset|test|export]
+  acr-meta-mcp vcs [list|health <provider>]
   acr-meta-mcp audit
 `);
   }
