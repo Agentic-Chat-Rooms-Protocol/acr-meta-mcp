@@ -5,7 +5,7 @@
 [![Tests: 30 Passing](https://img.shields.io/badge/tests-30%20passing-brightgreen.svg)]()
 [![TypeScript: Strict](https://img.shields.io/badge/TypeScript-Strict%20NodeNext-blue.svg)]()
 
-The **ACR Meta-MCP Forward Proxy** is an enterprise-grade Model Context Protocol (MCP) reverse and forward proxy, sandbox runtime, and dual-consent governance engine. It implements the dual-layer MCP architecture for the Agentic Chat Rooms (ACR) ecosystem: a **native/master MCP layer** for internal platform orchestration and a **governed Meta-MCP fabric** for proxying, sandboxing, credential vaulting, and policy-controlling third-party MCP servers (stdio, SSE, Streamable HTTP).
+The **ACR Meta-MCP Forward Proxy** is an enterprise-grade Model Context Protocol (MCP) reverse and forward proxy, sandbox runtime, and dual-consent governance engine. It operates alongside the local workstation MCP bridge (`acr-mcp-server`) and the cloud-hosted Remote MCP Gateway (`https://mcp.agentchatrooms.dev/mcp`), providing a **governed Meta-MCP fabric** for proxying, sandboxing, credential vaulting, and policy-controlling third-party MCP servers (stdio, SSE, Streamable HTTP).
 
 ---
 
