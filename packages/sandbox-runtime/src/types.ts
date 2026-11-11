@@ -12,9 +12,11 @@ export interface SandboxPolicyConfig {
   timeoutMs?: number;
   readOnlyFilesystem?: boolean;
   allowedWorkspacePaths?: string[];
+  symlinkMap?: Record<string, string>;
 }
 
 export interface ProcessSpawnSpec {
+  sandboxId?: string;
   command: string;
   args: string[];
   env: Record<string, string>;
@@ -29,3 +31,18 @@ export interface ExecutionResult {
   durationMs: number;
   timedOut: boolean;
 }
+
+export interface SandboxBoundaryAuditEvent {
+  event_type: 'SANDBOX_BOUNDARY_VIOLATION';
+  sandboxId: string;
+  pid: number | null;
+  profile: SandboxProfileType;
+  violationScope: 'FILESYSTEM' | 'NETWORK' | 'SYSCALL';
+  syscall: string;
+  target: string;
+  action: 'BLOCKED';
+  errorCode: 'EACCES' | 'EROFS' | 'ENETUNREACH' | 'EPERM' | 'ENOSYS' | 'EXDEV';
+  timestamp: string;
+}
+
+

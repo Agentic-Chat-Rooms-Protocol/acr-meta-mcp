@@ -1,5 +1,10 @@
 import { SandboxedProcess, SandboxPolicyConfig } from '../../sandbox-runtime/src/index.js';
-import { JsonRpcRequest, JsonRpcResponse, McpClientAdapter } from './types.js';
+import {
+  JsonRpcRequest,
+  JsonRpcResponse,
+  McpCancellationNotification,
+  McpClientAdapter,
+} from './types.js';
 
 export interface StdioAdapterOptions {
   command: string;
@@ -13,6 +18,7 @@ export class StdioMcpAdapter implements McpClientAdapter {
   private connected = false;
   private reqIdCounter = 1;
   private pendingRequests = new Map<string | number, { resolve: (res: any) => void; reject: (err: any) => void }>();
+  private emittedNotifications: McpCancellationNotification[] = [];
   private buffer = '';
 
   constructor(private readonly options: StdioAdapterOptions) {}
@@ -36,11 +42,22 @@ export class StdioMcpAdapter implements McpClientAdapter {
 
     child.stdout.on('data', (chunk) => {
       this.buffer += chunk.toString();
+      if (this.buffer.length > 10 * 1024 * 1024) {
+        this.buffer = '';
+        void this.disconnect();
+        return;
+      }
       this.processBuffer();
     });
 
     child.on('close', () => {
       this.connected = false;
+      for (const [reqId, handler] of this.pendingRequests.entries()) {
+        this.pendingRequests.delete(reqId);
+        handler.reject(
+          new Error(`OUTCOME_UNKNOWN: stdio transport closed while request ${reqId} was in flight`)
+        );
+      }
     });
 
     // Send standard initialize request
@@ -49,6 +66,45 @@ export class StdioMcpAdapter implements McpClientAdapter {
       capabilities: { tools: {} },
       clientInfo: { name: 'acr-meta-mcp-proxy', version: '0.8.2' },
     });
+  }
+
+  public cancelRequest(
+    requestId: string | number,
+    reason = 'Cancelled by caller'
+  ): McpCancellationNotification {
+    const notification: McpCancellationNotification = {
+      jsonrpc: '2.0',
+      method: 'notifications/cancelled',
+      params: { requestId, reason },
+    };
+    this.emittedNotifications.push(notification);
+
+    if (this.connected && this.sandboxProcess?.process) {
+      try {
+        this.sandboxProcess.process.stdin.write(JSON.stringify(notification) + '\n');
+      } catch {
+        // Ignore write failure on broken pipe
+      }
+    }
+
+    // Arbitrate completion vs cancellation race: flush any already-arrived frame in buffer first
+    if (this.buffer.length > 0) {
+      this.processBuffer();
+    }
+
+    const pending = this.pendingRequests.get(requestId);
+    if (pending) {
+      this.pendingRequests.delete(requestId);
+      pending.reject(
+        new Error(`OUTCOME_UNKNOWN: request ${requestId} cancelled while in flight (${reason})`)
+      );
+    }
+
+    return notification;
+  }
+
+  public getEmittedNotifications(): McpCancellationNotification[] {
+    return [...this.emittedNotifications];
   }
 
   private processBuffer(): void {
@@ -115,3 +171,4 @@ export class StdioMcpAdapter implements McpClientAdapter {
     return this.connected;
   }
 }
+
