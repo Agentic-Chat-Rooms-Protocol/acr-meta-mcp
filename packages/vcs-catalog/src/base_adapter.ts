@@ -39,7 +39,7 @@ export abstract class BaseVcsAdapter implements IVcsProviderAdapter {
     return {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
-      'User-Agent': 'ACR-Meta-MCP/0.8.2 (VcsAdapter)',
+      'User-Agent': 'ACR-Meta-MCP/1.0.0 (VcsAdapter)',
       ...this.getAuthHeaders(),
       ...(this.config.customHeaders || {}),
     };

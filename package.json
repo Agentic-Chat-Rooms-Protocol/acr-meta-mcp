@@ -1,6 +1,6 @@
 {
   "name": "@acr-js/meta-mcp",
-  "version": "0.8.2",
+  "version": "1.0.0",
   "description": "ACR Meta-MCP Forward Proxy: Policy-governed multi-server aggregation, sandboxing, and projection",
   "type": "module",
   "main": "dist/apps/control-plane-api/src/index.js",

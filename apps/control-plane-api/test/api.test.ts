@@ -1,5 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { MetaMcpServer } from '../src/server.js';
 
 describe('Meta-MCP Control Plane API & JSON-RPC Gateway', () => {
@@ -21,7 +22,7 @@ describe('Meta-MCP Control Plane API & JSON-RPC Gateway', () => {
     assert.equal(res.status, 200);
     const json = (await res.json()) as any;
     assert.equal(json.status, 'ONLINE');
-    assert.equal(json.version, '0.8.2');
+    assert.equal(json.version, '1.0.0');
     assert.ok(json.serverCount >= 2);
   });
 
@@ -307,5 +308,37 @@ describe('Meta-MCP Control Plane API & JSON-RPC Gateway', () => {
     } finally {
       await authServer.stop();
     }
+  });
+
+  it('should reject DNS-rebinding Host headers with 403 and require Origin on OPTIONS preflight', async () => {
+    const hostStatus = await new Promise<number>((resolve, reject) => {
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: TEST_PORT,
+          path: '/health',
+          method: 'GET',
+          headers: { Host: 'evil.example:29445' },
+        },
+        (res) => {
+          res.resume();
+          resolve(res.statusCode || 0);
+        }
+      );
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(hostStatus, 403);
+
+    const noOriginPreflight = await fetch(`${BASE_URL}/api/v1/meta-mcp/servers`, { method: 'OPTIONS' });
+    assert.equal(noOriginPreflight.status, 403);
+
+    const okPreflight = await fetch(`${BASE_URL}/api/v1/meta-mcp/servers`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://agentchatrooms.dev' },
+    });
+    assert.equal(okPreflight.status, 204);
+    assert.equal(okPreflight.headers.get('access-control-allow-origin'), 'https://agentchatrooms.dev');
+    assert.equal(okPreflight.headers.get('access-control-allow-private-network'), 'true');
   });
 });

@@ -68,7 +68,7 @@ export class HttpMcpAdapter implements McpClientAdapter {
 
     const headers = {
       'Content-Type': 'application/json',
-      'User-Agent': 'ACR-Meta-MCP-Proxy/0.8.2',
+      'User-Agent': 'ACR-Meta-MCP-Proxy/1.0.0',
       ...(this.options.headers || {}),
     };
 

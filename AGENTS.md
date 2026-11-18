@@ -22,13 +22,16 @@
 
 ## Architectural Disciplines & Rules
 1. **Dual-Layer MCP Separation**:
-   - Master Layer (`acr-core`, port 20443) manages agent identities, consensus voting, and JetStream bus.
-   - Meta-MCP Layer (`acr-meta-mcp`, port 20445) manages external/third-party tools, containment profiles, and credential vaulting.
+   - Master Layer (`acr-core`, `127.0.0.1:20443`) manages agent identities, consensus voting, and JetStream bus.
+   - Bridge Layer (`acr-bridge`, `127.0.0.1:20444`) provides local stdio/SSE bridge transport.
+   - Meta-MCP Layer (`acr-meta-mcp`, `127.0.0.1:20445`) manages external/third-party tools, containment profiles, and credential vaulting.
 2. **Zero Hardcoded Secrets**:
-   - Never embed raw credentials in source code. Credentials must be injected via runtime environment variables (`CONTEXT7_API_KEY`, etc.), secure REST `/api/v1/meta-mcp/vault/secrets` endpoints, or the CLI.
+   - Never embed raw credentials in source code. Persistent Auth Vaults (`ACR_VAULT_PATH`) fail closed when `ACR_VAULT_SECRET` / `ACR_MASTER_SECRET` is unset.
 3. **Database Vault Security**:
    - Use `AcrMultipleCiphersDb` for persistent encrypted storage with `ACR_MCDB_V1` binary headers and PBKDF2-HMAC-SHA512 KDF.
 4. **Dynamic Port Mapping**:
-   - Default port is `20445`. Support environment overrides (`ACR_META_MCP_PORT`, `ACR_PORT`) and local `~/.acr/ports.json`.
+   - Default port is `20445` on loopback `127.0.0.1`. Support environment overrides (`ACR_META_MCP_PORT`, `ACR_META_MCP_HOST`, `ACR_META_MCP_API_TOKEN`) and local `~/.acr/ports.json`.
 5. **Deterministic Verification**:
-   - Always run `npx tsc; node --test dist/**/*.test.js` before committing changes (maintain 100% pass across all 30 tests).
+   - Always run `npm run build` before `npm test` (tests execute compiled `dist/`).
+6. **Contacts**:
+   - Security disclosures and support strictly use `@agentchatrooms.dev` (`security@agentchatrooms.dev`, `support@agentchatrooms.dev`).

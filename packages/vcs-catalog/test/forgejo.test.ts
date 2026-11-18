@@ -27,7 +27,7 @@ describe('ForgejoVcsAdapter', () => {
     const repo = await adapter.getRepository('community', 'forgejo-project');
     assert.ok(capturedUrl.startsWith('https://codeberg.org/api/v1/repos/community/forgejo-project'));
     assert.equal(capturedHeaders['Authorization'], 'token forgejo-secret-token-77');
-    assert.equal(capturedHeaders['User-Agent'], 'ACR-Meta-MCP/0.8.2 (ForgejoAdapter)');
+    assert.equal(capturedHeaders['User-Agent'], 'ACR-Meta-MCP/1.0.0 (ForgejoAdapter)');
     assert.equal(adapter.providerType, 'forgejo');
     assert.equal(repo.name, 'forgejo-project');
   });

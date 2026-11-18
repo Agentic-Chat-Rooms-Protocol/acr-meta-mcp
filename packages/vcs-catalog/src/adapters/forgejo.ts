@@ -14,7 +14,7 @@ export class ForgejoVcsAdapter extends GiteaVcsAdapter {
   protected override getCommonHeaders(): Record<string, string> {
     return {
       ...super.getCommonHeaders(),
-      'User-Agent': 'ACR-Meta-MCP/0.8.2 (ForgejoAdapter)',
+      'User-Agent': 'ACR-Meta-MCP/1.0.0 (ForgejoAdapter)',
     };
   }
 

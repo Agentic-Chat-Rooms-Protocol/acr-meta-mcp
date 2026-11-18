@@ -2,10 +2,10 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![NPM Organization](https://img.shields.io/badge/npm-%40acr--js-red.svg)](https://www.npmjs.com/org/acr-js)
-[![Tests: 30 Passing](https://img.shields.io/badge/tests-30%20passing-brightgreen.svg)]()
+[![Tests: 120+ Passing](https://img.shields.io/badge/tests-120%2B%20passing-brightgreen.svg)]()
 [![TypeScript: Strict](https://img.shields.io/badge/TypeScript-Strict%20NodeNext-blue.svg)]()
 
-The **ACR Meta-MCP Forward Proxy** is an enterprise-grade Model Context Protocol (MCP) reverse and forward proxy, sandbox runtime, and dual-consent governance engine. It operates alongside the local workstation MCP bridge (`acr-mcp-server`) and the cloud-hosted Remote MCP Gateway (`https://mcp.agentchatrooms.dev/mcp`), providing a **governed Meta-MCP fabric** for proxying, sandboxing, credential vaulting, and policy-controlling third-party MCP servers (stdio, SSE, Streamable HTTP).
+The **ACR Meta-MCP Forward Proxy** is an enterprise-grade Model Context Protocol (MCP) reverse and forward proxy, sandbox runtime, and dual-consent governance engine. It operates alongside the local daemon (`acr-core` on `127.0.0.1:20443`), the workstation MCP bridge (`acr-bridge` on `127.0.0.1:20444`), and the cloud-hosted Remote MCP Gateway (`https://mcp.agentchatrooms.dev/mcp`), providing a **governed Meta-MCP fabric** for proxying, sandboxing, credential vaulting, and policy-controlling third-party MCP servers (stdio, SSE, Streamable HTTP).
 
 ---
 
@@ -83,8 +83,8 @@ The **ACR Meta-MCP Forward Proxy** is an enterprise-grade Model Context Protocol
 - **Projected Catalog**: Persona-filtered tool view tailored to the requesting agent DID and permissions.
 
 ### 6. Control Plane API & Streamable Gateway (`apps/control-plane-api`)
-- Native HTTP daemon running on port `20445`.
-- Private Network Access (PNA) and CORS compliant (`Access-Control-Allow-Private-Network: true`).
+- Native HTTP daemon running on `127.0.0.1:20445` (loopback-only by default).
+- Strict Host header allowlist (DNS-rebinding protection), exact-match CORS Origin validation (`https://agentchatrooms.dev` and loopback), and optional `ACR_META_MCP_API_TOKEN` Bearer auth.
 - Streamable HTTP JSON-RPC 2.0 gateway at `POST /mcp`.
 - Replay audit logging with sub-millisecond precision.
 
@@ -95,9 +95,12 @@ The **ACR Meta-MCP Forward Proxy** is an enterprise-grade Model Context Protocol
 | Variable | Default | Description |
 |---|---|---|
 | `ACR_META_MCP_PORT` | `20445` | HTTP listen port for Control Plane and MCP Gateway |
-| `ACR_META_MCP_HOST` | `0.0.0.0` | Listen host interface |
+| `ACR_META_MCP_HOST` | `127.0.0.1` | Listen host interface (loopback default) |
+| `ACR_META_MCP_API_TOKEN` | (optional) | Bearer token protecting non-health control plane & `/mcp` routes |
+| `ACR_META_MCP_ALLOWED_ORIGINS` | (optional) | Comma-separated extra CORS Origin allowlist entries |
+| `ACR_META_MCP_ALLOWED_HOSTS` | (optional) | Comma-separated extra Host header allowlist entries |
 | `ACR_VAULT_PATH` | (in-memory) | File path to encrypted MultipleCiphers database (`vault.db`) |
-| `ACR_VAULT_SECRET` | (generated) | Master encryption secret for Auth Vault |
+| `ACR_VAULT_SECRET` | (required if `ACR_VAULT_PATH` set) | Master encryption secret for persistent Auth Vault (fails closed if omitted) |
 | `CONTEXT7_API_KEY` | (optional) | Dynamic API key for Context7 real-time library docs MCP |
 
 ---
@@ -181,7 +184,7 @@ Add the ACR Meta-MCP Forward Proxy to any standard MCP client (`claude_desktop_c
 {
   "mcpServers": {
     "acr-meta-mcp": {
-      "url": "http://localhost:20445/mcp"
+      "url": "http://127.0.0.1:20445/mcp"
     }
   }
 }
@@ -195,18 +198,11 @@ All downstream tools (Context7, GitHub, Gitee, filesystem sandbox, custom agents
 
 ```bash
 npm install
+npm run build
 npm test
 ```
 
-```
-✔ Meta-MCP Control Plane API & JSON-RPC Gateway (8 tests passed)
-✔ Context7 Real MCP Tool E2E Integration & QA Test (7 tests passed)
-✔ Auth Vault (SQLite3MultipleCiphers & SQLCipher Engine) (5 tests passed)
-✔ Catalog Projector (3-Tier Catalog Pipeline) (2 tests passed)
-✔ Config Parser & Manifest Compiler (2 tests passed)
-✔ Policy Engine & Dual Consent (3 tests passed)
-✔ Registry Core (State Machine & Server Persistence) (1 test passed)
-✔ Sandbox Runtime (Containment Engine) (2 tests passed)
+## Security & Support
 
-30 tests passed, 0 failed (971ms)
-```
+- Security disclosures: `security@agentchatrooms.dev`
+- Support: `support@agentchatrooms.dev`

@@ -64,7 +64,7 @@ export class StdioMcpAdapter implements McpClientAdapter {
     await this.sendRequest('initialize', {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
-      clientInfo: { name: 'acr-meta-mcp-proxy', version: '0.8.2' },
+      clientInfo: { name: 'acr-meta-mcp-proxy', version: '1.0.0' },
     });
   }
 

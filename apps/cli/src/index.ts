@@ -4,6 +4,14 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 const BASE_URL = process.env.ACR_META_MCP_URL || 'http://127.0.0.1:20445';
+const API_TOKEN = (process.env.ACR_META_MCP_API_TOKEN || '').trim();
+
+function buildHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return {
+    ...(API_TOKEN ? { Authorization: `Bearer ${API_TOKEN}` } : {}),
+    ...extra,
+  };
+}
 
 const DEFAULT_SERVICES = [
   { id: 'acr-core', name: 'ACR Core Daemon', envVar: 'ACR_CORE_PORT', defaultPort: 20443, healthPath: '/health' },
@@ -64,7 +72,7 @@ async function main() {
 
     case 'list':
     case 'servers': {
-      const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/servers`);
+      const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/servers`, { headers: buildHeaders() });
       const data = (await res.json()) as any;
       console.log('\n======================================================');
       console.log(' ACR META-MCP REGISTERED SERVERS');
@@ -86,7 +94,7 @@ async function main() {
       const rawContent = readFileSync(filePath, 'utf-8');
       const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/servers/import`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildHeaders({ 'Content-Type': 'application/json' }),
         body: rawContent,
       });
       const data = await res.json();
@@ -103,7 +111,7 @@ async function main() {
       }
       const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/servers/${serverId}/toggle`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ enabled: command === 'enable' }),
       });
       const data = await res.json();
@@ -113,7 +121,7 @@ async function main() {
 
     case 'tools': {
       const view = args[1] || 'projected';
-      const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/tools?view=${view}`);
+      const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/tools?view=${view}`, { headers: buildHeaders() });
       const data = (await res.json()) as any;
       console.log(`\n======================================================`);
       console.log(` ACR META-MCP CATALOG (${view.toUpperCase()})`);
@@ -134,7 +142,7 @@ async function main() {
       }
       const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/tools/call`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ toolName, arguments: jsonArgs }),
       });
       const data = await res.json();
@@ -145,7 +153,7 @@ async function main() {
     case 'vault': {
       const subAction = args[1] || 'list';
       if (subAction === 'list') {
-        const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vault/secrets`);
+        const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vault/secrets`, { headers: buildHeaders() });
         const data = (await res.json()) as any;
         console.log('\n======================================================');
         console.log(' ACR META-MCP AUTH VAULT SECRETS (ENCRYPTED DATABASE)');
@@ -166,7 +174,7 @@ async function main() {
         const cipher = args[6] || 'aes-256-gcm';
         const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vault/secrets`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: buildHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ serverId, key, value, domain, cipher }),
         });
         const data = await res.json();
@@ -179,6 +187,7 @@ async function main() {
         }
         const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vault/secrets/${refId}`, {
           method: 'DELETE',
+          headers: buildHeaders(),
         });
         const data = await res.json();
         console.log('[ACR Meta-MCP Vault] Deleted secret:', data);
@@ -190,7 +199,7 @@ async function main() {
         }
         const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vault/rotate`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: buildHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ newMasterSecret }),
         });
         const data = await res.json();
@@ -261,7 +270,7 @@ async function main() {
           try {
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 1500);
-            const res = await fetch(`http://localhost:${port}${s.healthPath}`, { signal: controller.signal });
+            const res = await fetch(`http://127.0.0.1:${port}${s.healthPath}`, { signal: controller.signal });
             clearTimeout(timeout);
             const latency = Date.now() - start;
             console.log(` • [ONLINE]  ${s.name.padEnd(24)} :${port} (${latency}ms) [HTTP ${res.status}]`);
@@ -281,8 +290,8 @@ async function main() {
           for (const s of DEFAULT_SERVICES) {
             console.log(`${s.envVar}=${resolveServicePort(s, overrides)}`);
           }
-          console.log(`ACR_DAEMON_URL=http://localhost:${resolveServicePort(DEFAULT_SERVICES[0], overrides)}`);
-          console.log(`ACR_META_MCP_URL=http://localhost:${resolveServicePort(DEFAULT_SERVICES[1], overrides)}`);
+          console.log(`ACR_DAEMON_URL=http://127.0.0.1:${resolveServicePort(DEFAULT_SERVICES[0], overrides)}`);
+          console.log(`ACR_META_MCP_URL=http://127.0.0.1:${resolveServicePort(DEFAULT_SERVICES[1], overrides)}`);
         }
       } else {
         console.error('Unknown ports action. Valid: list | set | reset | test | export');
@@ -291,7 +300,7 @@ async function main() {
     }
 
     case 'audit': {
-      const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/audit?limit=20`);
+      const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/audit?limit=20`, { headers: buildHeaders() });
       const data = (await res.json()) as any;
       console.log('\n======================================================');
       console.log(' ACR META-MCP AUDIT TRAIL');
@@ -306,7 +315,7 @@ async function main() {
     case 'vcs': {
       const subAction = args[1] || 'list';
       if (subAction === 'list') {
-        const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vcs/providers`);
+        const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vcs/providers`, { headers: buildHeaders() });
         const data = (await res.json()) as any;
         console.log('\n======================================================');
         console.log(' ACR META-MCP GIT VCS PROVIDER CATALOG');
@@ -318,7 +327,7 @@ async function main() {
         console.log(`\nTotal registered VCS adapters: ${data.count || 0}\n`);
       } else if (subAction === 'health') {
         const target = args[2] || 'gitea';
-        const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vcs/providers/${target}/health`);
+        const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/vcs/providers/${target}/health`, { headers: buildHeaders() });
         const data = (await res.json()) as any;
         console.log(`VCS Provider [${target}] Health:`, JSON.stringify(data, null, 2));
       } else {
@@ -329,7 +338,7 @@ async function main() {
 
     default:
       console.log(`
-ACR Meta-MCP Forward Proxy CLI (v0.8.2)
+ACR Meta-MCP Forward Proxy CLI (v1.0.0)
 
 Usage:
   acr-meta-mcp health

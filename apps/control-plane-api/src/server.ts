@@ -145,7 +145,7 @@ export class MetaMcpServer {
       if (req.method === 'GET' && (pathname === '/health' || pathname === '/api/v1/meta-mcp/health')) {
         this.sendJson(res, 200, {
           status: 'ONLINE',
-          version: '0.8.2',
+          version: '1.0.0',
           protocol: 'meta-mcp/v1',
           uptime: process.uptime(),
           serverCount: this.service.registry.listServers().length,
@@ -384,7 +384,7 @@ export class MetaMcpServer {
             result: {
               protocolVersion: '2024-11-05',
               capabilities: { tools: { listChanged: true } },
-              serverInfo: { name: 'acr-meta-mcp-proxy', version: '0.8.2' },
+              serverInfo: { name: 'acr-meta-mcp-proxy', version: '1.0.0' },
             },
           });
           return;
