@@ -5,16 +5,14 @@
 [![Tests: 120+ Passing](https://img.shields.io/badge/tests-120%2B%20passing-brightgreen.svg)]()
 [![TypeScript: Strict](https://img.shields.io/badge/TypeScript-Strict%20NodeNext-blue.svg)]()
 
-The **ACR Meta-MCP Forward Proxy** is an enterprise-grade Model Context Protocol (MCP) reverse and forward proxy, sandbox runtime, and dual-consent governance engine. It operates alongside the local daemon (`acr-core` on `127.0.0.1:20443`), the workstation MCP bridge (`acr-bridge` on `127.0.0.1:20444`), and the cloud-hosted Remote MCP Gateway (`https://mcp.agentchatrooms.dev/mcp`), providing a **governed Meta-MCP fabric** for proxying, sandboxing, credential vaulting, and policy-controlling third-party MCP servers (stdio, SSE, Streamable HTTP).
-
----
+The **ACR Meta-MCP Forward Proxy** is a Model Context Protocol (MCP) forward proxy, ToolHive Micro-Sandboxing runtime, and dual-consent control plane with a $0 Runtime Protocol Tax. It operates alongside the local daemon (`acr-core` on `127.0.0.1:20443`), the workstation MCP bridge (`acr-bridge` on `127.0.0.1:20444`), and the cloud-hosted Remote MCP Gateway (`https://mcp.agentchatrooms.dev/mcp`) to proxy, sandbox, vault credentials for, and policy-control third-party MCP servers (stdio, SSE, Streamable HTTP).
 
 ## Architecture Overview
 
 ```
                           ┌────────────────────────────────────────────────────────┐
                           │               ACR Native / Master Layer                │
-                          │        (Agent Trust Ledger, JetStream Bus, DIDs)       │
+                          │        (Agent Trust Ledger, Event Bus, W3C DIDs)       │
                           └───────────────────────────┬────────────────────────────┘
                                                       │ Dual-Consent Gate
 ┌─────────────────────────────────────────────────────▼─────────────────────────────────────────────────────┐
@@ -43,8 +41,6 @@ The **ACR Meta-MCP Forward Proxy** is an enterprise-grade Model Context Protocol
 └───────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
----
-
 ## Key Modules & Capabilities
 
 ### 1. Config Ingestion (`packages/config-parser`)
@@ -55,15 +51,15 @@ The **ACR Meta-MCP Forward Proxy** is an enterprise-grade Model Context Protocol
 ### 2. Multi-Cipher Auth Vault (`packages/auth-vault`)
 - Fuses the cryptographic designs of **`utelle/SQLite3MultipleCiphers`** and **`sqlcipher/sqlcipher`**.
 - Encrypted at rest (`vault.db`) with 64-byte authenticated magic header `ACR_MCDB_V1`.
-- **Supported Ciphers**:
+- `Supported Ciphers`:
   - `aes-256-gcm` (NIST SP 800-38D AEAD)
   - `chacha20-poly1305` (RFC 8439 AEAD)
   - `sqlcipher-v4` (AES-256-CBC + HMAC-SHA512 per record)
-- **Key Derivation**: PBKDF2-HMAC-SHA512 (256,000 iterations default) with per-database random salts.
-- **Domain Boundaries**: `personal`, `org`, `enterprise`, `ephemeral`.
-- **Master Passphrase Rotation**: Atomic re-encryption of all database records.
+- `Key Derivation`: PBKDF2-HMAC-SHA512 (256,000 iterations default) with per-database random salts.
+- `Domain Boundaries`: `personal`, `org`, `enterprise`, `ephemeral`.
+- `Master Passphrase Rotation`: Atomic re-encryption of all database records.
 
-### 3. ToolHive-Inspired Sandbox Containment (`packages/sandbox-runtime`)
+### 3. ToolHive Micro-Sandboxing (`packages/sandbox-runtime`)
 - Isolates untrusted stdio processes using 4 containment profiles:
   - `no-network`: Prohibits external network calls; scrubs proxy settings.
   - `egress-allowlist`: Allows outbound HTTP/HTTPS exclusively to verified endpoints (e.g. `api.github.com`, `gitee.com`).
@@ -78,17 +74,15 @@ The **ACR Meta-MCP Forward Proxy** is an enterprise-grade Model Context Protocol
 - Human operator confirmation hooks (`REQUIRE_HUMAN_CONFIRMATION`).
 
 ### 5. 3-Tier Catalog Projector (`packages/catalog-projector`)
-- **Raw Catalog**: All tools discovered from downstream servers with prefix namespacing (`${serverId}__${toolName}`).
-- **Policy Catalog**: Tools that pass server health, non-quarantine, and policy permission checks.
-- **Projected Catalog**: Persona-filtered tool view tailored to the requesting agent DID and permissions.
+- `Raw Catalog`: All tools discovered from downstream servers with prefix namespacing (`${serverId}__${toolName}`).
+- `Policy Catalog`: Tools that pass server health, non-quarantine, and policy permission checks.
+- `Projected Catalog`: Persona-filtered tool view tailored to the requesting agent DID and permissions.
 
 ### 6. Control Plane API & Streamable Gateway (`apps/control-plane-api`)
 - Native HTTP daemon running on `127.0.0.1:20445` (loopback-only by default).
 - Strict Host header allowlist (DNS-rebinding protection), exact-match CORS Origin validation (`https://agentchatrooms.dev` and loopback), and optional `ACR_META_MCP_API_TOKEN` Bearer auth.
 - Streamable HTTP JSON-RPC 2.0 gateway at `POST /mcp`.
 - Replay audit logging with sub-millisecond precision.
-
----
 
 ## Environment Variables
 
@@ -102,8 +96,6 @@ The **ACR Meta-MCP Forward Proxy** is an enterprise-grade Model Context Protocol
 | `ACR_VAULT_PATH` | (in-memory) | File path to encrypted MultipleCiphers database (`vault.db`) |
 | `ACR_VAULT_SECRET` | (required if `ACR_VAULT_PATH` set) | Master encryption secret for persistent Auth Vault (fails closed if omitted) |
 | `CONTEXT7_API_KEY` | (optional) | Dynamic API key for Context7 real-time library docs MCP |
-
----
 
 ## REST API Reference
 
@@ -122,8 +114,6 @@ The **ACR Meta-MCP Forward Proxy** is an enterprise-grade Model Context Protocol
 | `POST` | `/api/v1/meta-mcp/vault/rotate` | Rotate master passphrase & re-encrypt DB |
 | `GET` | `/api/v1/meta-mcp/audit` | Replay cryptographic audit trail logs |
 | `POST` | `/mcp` | Streamable HTTP JSON-RPC 2.0 MCP Gateway |
-
----
 
 ## CLI Usage
 
@@ -174,8 +164,6 @@ acr ports test
 acr meta-mcp audit
 ```
 
----
-
 ## Integration with MCP Clients
 
 Add the ACR Meta-MCP Forward Proxy to any standard MCP client (`claude_desktop_config.json`, `~/.cursor/mcp.json`, etc.):
@@ -190,9 +178,7 @@ Add the ACR Meta-MCP Forward Proxy to any standard MCP client (`claude_desktop_c
 }
 ```
 
-All downstream tools (Context7, GitHub, Gitee, filesystem sandbox, custom agents) will be dynamically projected, sandboxed, and governed under dual-consent policy rules.
-
----
+All downstream tools (Context7, GitHub, Gitee, filesystem sandbox, custom agents) are dynamically projected, sandboxed, and governed under dual-consent policy rules.
 
 ## Test Suite Execution
 
