@@ -1,23 +1,98 @@
 import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import { MetaMcpService } from './service.js';
 
 export interface ServerOptions {
   port?: number;
   host?: string;
+  apiToken?: string;
+  allowedOrigins?: string[];
+  allowedHosts?: string[];
 }
 
 export class MetaMcpServer {
   public readonly service = new MetaMcpService();
   private httpServer: Server | null = null;
+  private apiToken: string = '';
+  private extraAllowedOrigins: string[] = [];
+  private extraAllowedHosts: string[] = [];
 
-  private setCorsAndPnaHeaders(req: IncomingMessage, res: ServerResponse): void {
-    const origin = req.headers.origin || '*';
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-ACR-Agent-DID, X-ACR-Role');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    // Private Network Access (PNA) header for HTTPS -> localhost
-    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  private extractHostname(hostHeader: string | undefined): string {
+    if (!hostHeader) return '';
+    const trimmed = hostHeader.trim().toLowerCase();
+    if (trimmed.startsWith('[')) {
+      const endBracket = trimmed.indexOf(']');
+      return endBracket !== -1 ? trimmed.slice(1, endBracket) : trimmed;
+    }
+    const colon = trimmed.indexOf(':');
+    return colon !== -1 ? trimmed.slice(0, colon) : trimmed;
+  }
+
+  private isHostAllowed(req: IncomingMessage): boolean {
+    const hostname = this.extractHostname(req.headers.host);
+    if (!hostname) return true;
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+      return true;
+    }
+    return this.extraAllowedHosts.some((h) => this.extractHostname(h) === hostname);
+  }
+
+  private isOriginAllowed(origin: string): boolean {
+    if (!origin || origin === 'null') return false;
+    if (this.extraAllowedOrigins.some((o) => o.toLowerCase() === origin.toLowerCase())) {
+      return true;
+    }
+    try {
+      const parsed = new URL(origin);
+      const hostname = parsed.hostname.toLowerCase();
+      if (parsed.protocol === 'https:' && (hostname === 'agentchatrooms.dev' || hostname === 'www.agentchatrooms.dev')) {
+        return true;
+      }
+      if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]')) {
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  private hasValidBearerToken(req: IncomingMessage): boolean {
+    if (!this.apiToken) return true;
+    const auth = req.headers.authorization || '';
+    if (!auth.startsWith('Bearer ')) return false;
+    const provided = Buffer.from(auth.slice('Bearer '.length), 'utf8');
+    const expected = Buffer.from(this.apiToken, 'utf8');
+    return provided.length === expected.length && timingSafeEqual(provided, expected);
+  }
+
+  private applySecurityAndCorsHeaders(req: IncomingMessage, res: ServerResponse): boolean {
+    res.setHeader('Vary', 'Origin');
+    if (!this.isHostAllowed(req)) {
+      this.sendJson(res, 403, { error: 'Forbidden host header' });
+      return false;
+    }
+
+    const origin = req.headers.origin;
+    if (origin !== undefined) {
+      if (!this.isOriginAllowed(origin)) {
+        this.sendJson(res, 403, { error: 'Forbidden CORS origin' });
+        return false;
+      }
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, X-Requested-With, X-ACR-Agent-DID, X-ACR-Role, Access-Control-Request-Private-Network'
+      );
+      if (req.method === 'OPTIONS') {
+        res.setHeader('Access-Control-Allow-Private-Network', 'true');
+      }
+    } else if (req.method === 'OPTIONS') {
+      this.sendJson(res, 403, { error: 'Origin header required for preflight' });
+      return false;
+    }
+    return true;
   }
 
   private async parseJsonBody(req: IncomingMessage): Promise<any> {
@@ -47,7 +122,9 @@ export class MetaMcpServer {
   }
 
   public async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    this.setCorsAndPnaHeaders(req, res);
+    if (!this.applySecurityAndCorsHeaders(req, res)) {
+      return;
+    }
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
@@ -57,6 +134,11 @@ export class MetaMcpServer {
 
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
     const pathname = url.pathname;
+
+    if (pathname !== '/health' && pathname !== '/api/v1/meta-mcp/health' && !this.hasValidBearerToken(req)) {
+      this.sendJson(res, 401, { error: 'Unauthorized: valid Bearer token required.' });
+      return;
+    }
 
     try {
       // ─── Health check ──────────────────────────────────────────────
@@ -360,7 +442,13 @@ export class MetaMcpServer {
 
   public async start(options: ServerOptions = {}): Promise<void> {
     const port = options.port || 20445;
-    const host = options.host || '0.0.0.0';
+    const host = options.host || '127.0.0.1';
+    this.apiToken = (options.apiToken ?? process.env.ACR_META_MCP_API_TOKEN ?? '').trim();
+    this.extraAllowedOrigins = options.allowedOrigins ?? (process.env.ACR_META_MCP_ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+    this.extraAllowedHosts = options.allowedHosts ?? (process.env.ACR_META_MCP_ALLOWED_HOSTS || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (host && host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
+      this.extraAllowedHosts.push(host);
+    }
 
     this.httpServer = createServer((req, res) => this.handleRequest(req, res));
 

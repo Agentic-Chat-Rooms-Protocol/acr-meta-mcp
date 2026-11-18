@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { CipherAlgorithm, VaultDomain, VaultSecretEntry, VaultStorageOptions } from './types.js';
 import { AcrMultipleCiphersDb } from './db.js';
 import { decryptSecret, encryptSecret } from './crypto.js';
@@ -8,17 +9,23 @@ export class AuthVault {
   private readonly defaultCipher: CipherAlgorithm;
 
   constructor(options: VaultStorageOptions = {}) {
-    const master =
+    const dbPath = options.dbPath || process.env.ACR_VAULT_PATH;
+    const configuredSecret =
       options.masterSecret ||
       process.env.ACR_VAULT_SECRET ||
-      process.env.ACR_MASTER_SECRET ||
-      'acr-meta-mcp-default-master-key-082';
+      process.env.ACR_MASTER_SECRET;
+    if (dbPath && !configuredSecret) {
+      throw new Error(
+        'AuthVault requires options.masterSecret (or ACR_VAULT_SECRET / ACR_MASTER_SECRET) when dbPath is configured.'
+      );
+    }
+    const master = configuredSecret || randomBytes(32).toString('hex');
     
     this.defaultCipher = options.cipher || 'aes-256-gcm';
     this.defaultDomain = options.defaultDomain || 'personal';
 
     this.db = new AcrMultipleCiphersDb({
-      dbPath: options.dbPath || process.env.ACR_VAULT_PATH,
+      dbPath,
       masterSecret: master,
       cipher: this.defaultCipher,
       kdf: options.kdf || 'pbkdf2-sha512',

@@ -1,7 +1,7 @@
 import { MetaMcpServer } from './server.js';
 
 const PORT = parseInt(process.env.ACR_META_MCP_PORT || '20445', 10);
-const HOST = process.env.ACR_META_MCP_HOST || '0.0.0.0';
+const HOST = process.env.ACR_META_MCP_HOST || '127.0.0.1';
 
 const server = new MetaMcpServer();
 

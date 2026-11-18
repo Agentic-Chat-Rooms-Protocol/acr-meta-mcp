@@ -121,4 +121,12 @@ describe('Auth Vault (SQLite3MultipleCiphers & SQLCipher Engine)', () => {
       vault.resolveSecretRefs(envMap, ['personal']);
     }, /Domain violation/);
   });
+
+  it('6. should fail closed when dbPath is configured without a masterSecret', () => {
+    const unconfiguredDb = join(tmpdir(), `acr_test_unconfigured_${Date.now()}.db`);
+    assert.throws(() => {
+      new AuthVault({ dbPath: unconfiguredDb });
+    }, /AuthVault requires options\.masterSecret/i);
+    assert.equal(existsSync(unconfiguredDb), false);
+  });
 });

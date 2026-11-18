@@ -273,4 +273,39 @@ describe('Meta-MCP Control Plane API & JSON-RPC Gateway', () => {
     assert.equal(json.status, 'SUCCESS');
     assert.ok(json.result.content[0].text);
   });
+
+  it('should reject untrusted CORS Origins with 403 and never reflect Access-Control-Allow-Credentials', async () => {
+    const res = await fetch(`${BASE_URL}/api/v1/meta-mcp/servers`, {
+      headers: { Origin: 'https://evil.example' },
+    });
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('access-control-allow-origin'), null);
+    assert.equal(res.headers.get('access-control-allow-credentials'), null);
+
+    const okRes = await fetch(`${BASE_URL}/api/v1/meta-mcp/servers`, {
+      headers: { Origin: 'https://agentchatrooms.dev' },
+    });
+    assert.equal(okRes.status, 200);
+    assert.equal(okRes.headers.get('access-control-allow-origin'), 'https://agentchatrooms.dev');
+    assert.equal(okRes.headers.get('access-control-allow-credentials'), null);
+  });
+
+  it('should enforce Bearer token auth when apiToken is configured while keeping /health readable', async () => {
+    const authServer = new MetaMcpServer();
+    await authServer.start({ port: 29446, host: '127.0.0.1', apiToken: 'meta-mcp-token-xyz' });
+    try {
+      const health = await fetch('http://127.0.0.1:29446/health');
+      assert.equal(health.status, 200);
+
+      const unauth = await fetch('http://127.0.0.1:29446/api/v1/meta-mcp/servers');
+      assert.equal(unauth.status, 401);
+
+      const ok = await fetch('http://127.0.0.1:29446/api/v1/meta-mcp/servers', {
+        headers: { Authorization: 'Bearer meta-mcp-token-xyz' },
+      });
+      assert.equal(ok.status, 200);
+    } finally {
+      await authServer.stop();
+    }
+  });
 });
